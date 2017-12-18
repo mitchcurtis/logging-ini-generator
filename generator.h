@@ -11,7 +11,14 @@ class Generator : public QObject
 public:
     explicit Generator(QObject *parent = nullptr);
 
-    void generate(const QStringList &arguments);
+    enum RuleMode {
+        SetAllRulesToFalse,
+        GroupAndDisable
+    };
+
+    void setRuleMode(RuleMode ruleMode);
+
+    void generate(const QString projectDirPath);
 
 private slots:
     void onStarted();
@@ -19,6 +26,7 @@ private slots:
 
 private:
     QProcess mGitProcess;
+    RuleMode mRuleMode;
 };
 
 #endif // GENERATOR_H
