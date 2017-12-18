@@ -66,6 +66,8 @@ void Generator::onFinished(int exitCode, QProcess::ExitStatus exitStatus)
 
     QTextStream stdOut(stdout);
 
+    QStringList categories;
+
     while (1) {
         const QString line = mGitProcess.readLine();
         if (line.isEmpty())
@@ -81,8 +83,17 @@ void Generator::onFinished(int exitCode, QProcess::ExitStatus exitStatus)
             continue;
 
         const QString category = line.mid(openingQuoteIndex + 1, closingQuoteIndex - openingQuoteIndex - 1);
+        categories.append(category);
+    }
 
-        stdOut << category << "\n";
+    if (categories.isEmpty()) {
+        qDebug() << "No categories found";
+        return qApp->exit(0);
+    }
+
+    stdOut << "[Rules]\n";
+    for (const QString &category : qAsConst(categories)) {
+        stdOut << ";" << category << " = true\n";
     }
 
     qApp->exit(0);
