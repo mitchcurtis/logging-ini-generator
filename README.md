@@ -1,5 +1,5 @@
 # logging-ini-generator
-Generates a list of logging categories from a given Qt project
+Generates a list of logging categories from a given Qt project.
 
 This was created as a first step for a hackathon project:
 
