@@ -32,7 +32,7 @@ void Generator::generate(const QString projectDirPath)
     mGitProcess.setWorkingDirectory(projectDirPath);
 
     QStringList gitArguments;
-    gitArguments << "grep" << "Q_LOGGING_CATEGORY";
+    gitArguments << "grep" << "Q_LOGGING_CATEGORY\(";
     mGitProcess.start(QStringLiteral("git"), gitArguments);
 
     connect(&mGitProcess, &QProcess::started, this, &Generator::onStarted);
