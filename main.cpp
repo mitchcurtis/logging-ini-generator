@@ -1,3 +1,4 @@
+#include <QCommandLineParser>
 #include <QCoreApplication>
 #include <QDebug>
 #include <QFile>
@@ -8,21 +9,39 @@ int main(int argc, char *argv[])
 {
     QCoreApplication app(argc, argv);
 
-    if (app.arguments().size() < 2) {
-        qDebug() << "Usage:";
-        qDebug() << "logging-ini-generator <project-dir> > logging.ini";
-        return 1;
-    }
+    QCommandLineParser cliParser;
+    cliParser.setApplicationDescription("Qt Logging INI Generator");
+    cliParser.addHelpOption();
+    cliParser.addVersionOption();
+    cliParser.setSingleDashWordOptionMode(QCommandLineParser::ParseAsLongOptions);
 
-    const QString projectDirPath = app.arguments().at(1);
+    cliParser.addPositionalArgument("dir", "The path to the project's directory");
+
+    QCommandLineOption submodulesOption(QStringList() << "s" << "submodules", "Collect categories from the given project and its direct submodules.");
+    cliParser.addOption(submodulesOption);
+    QCommandLineOption recursiveOption(QStringList() << "r" << "recursive", "Collect categories from the given project and its submodules, recursively (requires -s)");
+    cliParser.addOption(recursiveOption);
+
+    cliParser.process(app);
+
+    if (cliParser.positionalArguments().isEmpty())
+        cliParser.showHelp(1);
+
+    if (cliParser.isSet(recursiveOption) && !cliParser.isSet(submodulesOption))
+        cliParser.showHelp(1);
+
+    const QString projectDirPath = cliParser.positionalArguments().first();
     if (!QFile::exists(projectDirPath)) {
         qWarning() << "Project directory" << projectDirPath << "does not exist";
         return 1;
     }
 
     Generator generator;
+    generator.setSubmoduleMode(cliParser.isSet(submodulesOption)
+        ? Generator::CheckSubmodules : cliParser.isSet(recursiveOption)
+        ? Generator::CheckSubmodulesRecursively : Generator::IgnoreSubmodules);
     generator.setRuleMode(Generator::GroupAndDisable);
-    generator.generate(projectDirPath);
+    generator.generate(cliParser.positionalArguments().first());
 
-    return app.exec();
+    return 0;
 }

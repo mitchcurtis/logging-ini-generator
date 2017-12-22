@@ -6,8 +6,14 @@
 
 Generator::Generator(QObject *parent) :
     QObject(parent),
+    mSubmoduleMode(CheckSubmodulesRecursively),
     mRuleMode(SetAllRulesToFalse)
 {
+}
+
+void Generator::setSubmoduleMode(Generator::SubmoduleMode submoduleMode)
+{
+    mSubmoduleMode = submoduleMode;
 }
 
 void Generator::setRuleMode(RuleMode ruleMode)
@@ -17,7 +23,7 @@ void Generator::setRuleMode(RuleMode ruleMode)
 
 void Generator::generate(const QString projectDirPath)
 {
-    qDebug() << "Generating logging.ini for project at" << projectDirPath << "...";
+    mCategories.clear();
 
     QStringList nameFilters;
     nameFilters << ".git";
@@ -30,40 +36,61 @@ void Generator::generate(const QString projectDirPath)
     }
 
     mGitProcess.setWorkingDirectory(projectDirPath);
+    mGitSubmoduleProcess.setWorkingDirectory(projectDirPath);
 
     QStringList gitArguments;
     gitArguments << "grep" << "Q_LOGGING_CATEGORY\(";
+
+    QStringList gitSubmoduleArguments;
+    if (mSubmoduleMode == CheckSubmodules) {
+        gitSubmoduleArguments << "submodule" << "foreach" << "git grep Q_LOGGING_CATEGORY\\(";
+    } else if (mSubmoduleMode == CheckSubmodulesRecursively) {
+        gitSubmoduleArguments << "submodule" << "foreach" << "--recursive" << "\"git grep Q_LOGGING_CATEGORY\(\"";
+    }
+
     mGitProcess.start(QStringLiteral("git"), gitArguments);
+    mGitProcess.waitForFinished();
+    handleErrors(&mGitProcess);
+    extractCategories(&mGitProcess);
+    mGitProcess.close();
 
-    connect(&mGitProcess, &QProcess::started, this, &Generator::onStarted);
-    // I think we can't use the new syntax here because of finished()'s overloads...
-    connect(&mGitProcess, SIGNAL(finished(int,QProcess::ExitStatus)), this, SLOT(onFinished(int,QProcess::ExitStatus)));
+    if (mSubmoduleMode != IgnoreSubmodules) {
+        mGitSubmoduleProcess.start(QStringLiteral("git"), gitSubmoduleArguments);
+        mGitSubmoduleProcess.waitForFinished();
+        handleErrors(&mGitSubmoduleProcess);
+        extractCategories(&mGitSubmoduleProcess);
+        mGitSubmoduleProcess.close();
+    }
+
+    if (mCategories.isEmpty()) {
+        qDebug() << "No categories found";
+        return qApp->exit(0);
+    }
+
+    outputCatgeories();
+
+    qApp->exit(0);
 }
 
-void Generator::onStarted()
+void Generator::handleErrors(QProcess *process) const
 {
-}
-
-void Generator::onFinished(int exitCode, QProcess::ExitStatus exitStatus)
-{
-    if (exitStatus == QProcess::CrashExit) {
-        qWarning() << "git crashed! aborting..";
+    if (process->exitStatus() == QProcess::CrashExit) {
+        qWarning() << process->program() << process->arguments() << " crashed! aborting..";
         qApp->exit(1);
     }
 
-    if (exitCode != 0) {
-        qWarning() << "git returned non-zero exit code (" << exitCode << "):";
-        qWarning() << mGitProcess.readAllStandardError();
+    if (process->exitCode() != 0) {
+        qWarning() << process->program() << process->arguments() << "returned non-zero exit code (" << process->exitCode() << "):";
+        qWarning() << process->readAllStandardError();
         qWarning() << "aborting..";
         qApp->exit(1);
     }
+}
 
-    QTextStream stdOut(stdout);
-
-    QStringList categories;
-
+void Generator::extractCategories(QProcess *process)
+{
     while (1) {
-        const QString line = mGitProcess.readLine();
+        const QString line = process->readLine();
         if (line.isEmpty())
             break;
 
@@ -77,20 +104,20 @@ void Generator::onFinished(int exitCode, QProcess::ExitStatus exitStatus)
             continue;
 
         const QString category = line.mid(openingQuoteIndex + 1, closingQuoteIndex - openingQuoteIndex - 1);
-        categories.append(category);
+        mCategories.append(category);
     }
+}
 
-    if (categories.isEmpty()) {
-        qDebug() << "No categories found";
-        return qApp->exit(0);
-    }
+void Generator::outputCatgeories()
+{
+    QTextStream stdOut(stdout);
 
     stdOut << "[Rules]\n";
 
     if (mRuleMode == SetAllRulesToFalse) {
-        std::sort(categories.begin(), categories.end());
+        std::sort(mCategories.begin(), mCategories.end());
 
-        for (const QString &category : qAsConst(categories)) {
+        for (const QString &category : qAsConst(mCategories)) {
             stdOut << category << " = false\n";
         }
     } else {
@@ -121,7 +148,7 @@ void Generator::onFinished(int exitCode, QProcess::ExitStatus exitStatus)
         QHash<QString, QStringList> groupedCategories;
         QStringList grouplessCategories;
 
-        for (const QString &category : qAsConst(categories)) {
+        for (const QString &category : qAsConst(mCategories)) {
             const int periodIndex = category.indexOf(separator);
             if (periodIndex != -1) {
                 const QString groupName = category.left(periodIndex);
@@ -150,6 +177,4 @@ void Generator::onFinished(int exitCode, QProcess::ExitStatus exitStatus)
             stdOut << category << " = false\n";
         }
     }
-
-    qApp->exit(0);
 }

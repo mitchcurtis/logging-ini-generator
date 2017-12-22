@@ -11,22 +11,32 @@ class Generator : public QObject
 public:
     explicit Generator(QObject *parent = nullptr);
 
+    enum SubmoduleMode {
+        IgnoreSubmodules,
+        CheckSubmodules,
+        CheckSubmodulesRecursively
+    };
+
     enum RuleMode {
         SetAllRulesToFalse,
         GroupAndDisable
     };
 
+    void setSubmoduleMode(SubmoduleMode submoduleMode);
     void setRuleMode(RuleMode ruleMode);
 
     void generate(const QString projectDirPath);
 
-private slots:
-    void onStarted();
-    void onFinished(int exitCode, QProcess::ExitStatus exitStatus);
-
 private:
-    QProcess mGitProcess;
+    void handleErrors(QProcess *process) const;
+    void extractCategories(QProcess *process);
+    void outputCatgeories();
+
+    SubmoduleMode mSubmoduleMode;
     RuleMode mRuleMode;
+    QProcess mGitProcess;
+    QProcess mGitSubmoduleProcess;
+    QStringList mCategories;
 };
 
 #endif // GENERATOR_H
